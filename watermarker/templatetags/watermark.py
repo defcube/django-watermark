@@ -154,8 +154,6 @@ def watermark(url, args=''):
     new_file = urlparse.urljoin(basedir, wm_name_hash)
     new_path = _get_path_from_url(new_file)
 
-    print locals()
-
     # see if the image already exists on the filesystem.  If it does, use it.
     if os.access(new_path, os.R_OK):
         # see if the Watermark object was modified since the file was created
