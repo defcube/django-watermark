@@ -172,9 +172,12 @@ def watermark(url, args=''):
                                tile=tile,
                                greyscale=greyscale,
                                rotation=rotation)
-    wm_image.save(new_path, quality=QUALITY)
-
-    # send back the URL to the new, watermarked image
+    try:
+        wm_image.save(new_path, quality=QUALITY)
+    except IOError:
+        r, g, b, a = wm_image.split()
+        wm_image = Image.merge("RGB", (r,g,b))
+        wm_image.save(new_path, quality=QUALITY)
+    #send back the URL to the new, watermarked image
     return urlparse.urljoin(basedir, wm_name_hash)
-
 register.filter(watermark)
