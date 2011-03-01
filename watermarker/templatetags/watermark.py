@@ -173,7 +173,7 @@ def watermark(url, args=''):
                                greyscale=greyscale,
                                rotation=rotation)
     try:
-        wm_image.save(new_path, quality=QUALITY)
+        wm_image.save(new_path, quality=QUALITY, format="JPEG")
     except IOError:
         r, g, b, a = wm_image.split()
         wm_image = Image.merge("RGB", (r,g,b))
