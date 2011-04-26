@@ -175,11 +175,13 @@ def watermark(url, args=''):
     try:
         wm_image.save(new_path, quality=QUALITY, format="JPEG")
         from main.tasks import upload_file_to_cdn
+        nname = 'static'+new_path.split('static')[1]
         upload_file_to_cdn.apply_async(args=[new_path,], countdown=0)
     except IOError:
         r, g, b, a = wm_image.split()
         wm_image = Image.merge("RGB", (r,g,b))
         wm_image.save(new_path, quality=QUALITY)
+        upload_file_to_cdn.apply_async(args=[new_path,], countdown=0)
     #send back the URL to the new, watermarked image
     return urlparse.urljoin(basedir, wm_name_hash)
 register.filter(watermark)
