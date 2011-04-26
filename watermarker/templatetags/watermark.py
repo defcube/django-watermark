@@ -174,6 +174,8 @@ def watermark(url, args=''):
                                rotation=rotation)
     try:
         wm_image.save(new_path, quality=QUALITY, format="JPEG")
+        from main.tasks import upload_file_to_cdn
+        upload_file_to_cdn.apply_async(args=[new_path,], countdown=0)
     except IOError:
         r, g, b, a = wm_image.split()
         wm_image = Image.merge("RGB", (r,g,b))
