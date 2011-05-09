@@ -19,18 +19,14 @@ def write_image_to_ftp(image, name, q):
     except ImportError:
         from StringIO import StringIO
     
-    try:
-        from cStringIO import StringIO
-    except ImportError:
-        from StringIO import StringIO
-    memory_file = StringIO()
     from main.storage import FTPStorageFile, FTPStorage
+    from django.core.files.base import ContentFile
+    memory_file = StringIO()
     image.save(memory_file, quality=q, format='JPEG')
+    cf = ContentFile(memory_file.getvalue())
     storage = FTPStorage()
-    storage._start_connection()
-    storage._put_file(name, memory_file.getvalue())
-    memory_file.close()
-    
+    storage.save(name, cf) 
+        
 def get_image_from_ftp(name):
     from main.storage import FTPStorage, FTPStorageFile
     import os
@@ -163,12 +159,11 @@ def watermark(url, args=''):
 
     target = get_image_from_ftp(target_path)
     #target = Image.open(target_path)
-    
     #mark = Image.open(watermark.image.path)
     mark = get_image_from_ftp(watermark.image.name)
-    
     # determine the actual value that the parameters provided will render
-    params = utils.determine_parameter_values(target, mark, position, opacity, scale, tile, greyscale, rotation)
+    params = utils.determine_parameter_values(target, mark, position, opacity,
+                                              scale, tile, greyscale, rotation)
     params.update({
                     'base': base,
                     'watermark': watermark.id,
@@ -207,7 +202,7 @@ def watermark(url, args=''):
         # only return the old file if things appear to be the same
         if modified >= watermark.date_updated:
             return new_file
-
+    
     # create the watermarked image on the filesystem
     wm_image = utils.watermark(target,
                                mark,
