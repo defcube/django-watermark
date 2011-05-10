@@ -11,43 +11,6 @@ import random
 
 register = template.Library()
 
-def write_image_to_ftp(image, name, q):
-    from main.storage import FTPStorage, FTPStorageFile
-    import os
-    try:
-        from cStringIO import StringIO
-    except ImportError:
-        from StringIO import StringIO
-    
-    from main.storage import FTPStorageFile, FTPStorage
-    from django.core.files.base import ContentFile
-    memory_file = StringIO()
-    image.save(memory_file, quality=q, format='JPEG')
-    cf = ContentFile(memory_file.getvalue())
-    storage = FTPStorage()
-    storage.save(name, cf) 
-        
-def get_image_from_ftp(name):
-    from main.storage import FTPStorage, FTPStorageFile
-    import os
-    try:
-        from cStringIO import StringIO
-    except ImportError:
-        from StringIO import StringIO
-        
-    from django.core.files.base import ContentFile
-    name = name.split('/static/')[-1]
-    memory_file = StringIO()
-    storage = FTPStorage()
-    storage._start_connection()
-    storage._connection.cwd(os.path.dirname(name))
-    storage._connection.retrbinary('RETR ' + os.path.basename(name),
-                                   memory_file.write)
-    storage.disconnect()
-    cf = ContentFile(memory_file.getvalue())
-    return Image.open(cf)
-    
-
 # determine the quality of the image after the watermark is applied
 try:
     QUALITY = settings.WATERMARKING_QUALITY
@@ -156,11 +119,9 @@ def watermark(url, args=''):
 
     # open the target image file along with the watermark image
     target_path = _get_path_from_url(url)
+    target = Image.open(target_path)
+    mark = Image.open(watermark.image.path)
 
-    target = get_image_from_ftp(target_path)
-    #target = Image.open(target_path)
-    #mark = Image.open(watermark.image.path)
-    mark = get_image_from_ftp(watermark.image.name)
     # determine the actual value that the parameters provided will render
     params = utils.determine_parameter_values(target, mark, position, opacity,
                                               scale, tile, greyscale, rotation)
@@ -213,17 +174,11 @@ def watermark(url, args=''):
                                greyscale=greyscale,
                                rotation=rotation)
     try:
-        pass
-        #wm_image.save(new_path, quality=QUALITY, format="JPEG")
+        wm_image.save(new_path, quality=QUALITY, format="JPEG")
     except IOError:
         r, g, b, a = wm_image.split()
         wm_image = Image.merge("RGB", (r,g,b))
-        #wm_image.save(new_path, quality=QUALITY)
-    #from main.tasks import upload_file_to_cdn
-    name = new_path.split('/static/')[-1]
-    #upload_file_to_cdn.apply_async(args=[name,], countdown=0)
-    write_image_to_ftp(wm_image, name, QUALITY)
-    #tfile.write(wm_image.im.copy())
+        wm_image.save(new_path, quality=QUALITY)
     #send back the URL to the new, watermarked image
     return urlparse.urljoin(basedir, wm_name_hash)
 register.filter(watermark)
