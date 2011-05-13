@@ -1,6 +1,6 @@
 from django import template
 from django.conf import settings
-from watermarker.models import Watermark
+from watermarker.models import Watermark, WatermarkFiles
 from watermarker import utils
 from datetime import datetime
 from hashlib import sha1
@@ -8,8 +8,40 @@ import Image
 import urlparse
 import os
 import random
+from django.core.files.base import ContentFile
+    
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from StringIO import StringIO
 
 register = template.Library()
+
+def get_image_from_s3(name):
+    name = name.split('/static/')[-1]
+    name = name.split('s3.amazonaws.com/')[-1]
+    try:
+        name = name.split('?')[0]
+    except KeyError:
+        pass
+    from storages.backends.s3boto import S3BotoStorage, S3BotoStorageFile
+    cfile = S3BotoStorageFile(name=name, mode='r', storage=S3BotoStorage())
+    im = Image.open(cfile)
+    return im
+
+def store_image_to_s3(image, name, q, format):
+    name = name.split('s3.amazonaws.com/')[-1]
+    try:
+        name = name.split('?')[0]
+    except KeyError:
+        pass
+    from storages.backends.s3boto import S3BotoStorage, S3BotoStorageFile
+    memory_file = StringIO()
+    image.save(memory_file, quality=q, format=format)
+    cf = ContentFile(memory_file.getvalue())
+    storage = S3BotoStorage()
+    storage.save(name, cf)
+    
 
 # determine the quality of the image after the watermark is applied
 try:
@@ -17,7 +49,8 @@ try:
 except AttributeError:
     QUALITY = 85
 
-def _get_path_from_url(url, root=settings.MEDIA_ROOT, url_root=settings.MEDIA_URL):
+def _get_path_from_url(url, root=settings.MEDIA_ROOT,
+                       url_root=settings.MEDIA_URL):
     """
     Makes a filesystem path from the specified URL
     """
@@ -95,7 +128,8 @@ def watermark(url, args=''):
     rotation = 0
     position = None
 
-    # look for the specified watermark by name.  If it's not there, go no further
+    # look for the specified watermark by name.  If it's not there, go no
+    #further
     try:
         watermark = Watermark.objects.get(name=name, is_active=True)
     except Watermark.DoesNotExist:
@@ -119,9 +153,10 @@ def watermark(url, args=''):
 
     # open the target image file along with the watermark image
     target_path = _get_path_from_url(url)
-    target = Image.open(target_path)
-    mark = Image.open(watermark.image.path)
-
+    #target = Image.open(target_path)
+    #mark = Image.open(watermark.image.path)
+    target = get_image_from_s3(target_path)
+    mark = get_image_from_s3(watermark.image.name)
     # determine the actual value that the parameters provided will render
     params = utils.determine_parameter_values(target, mark, position, opacity,
                                               scale, tile, greyscale, rotation)
@@ -154,15 +189,20 @@ def watermark(url, args=''):
     # figure out where the watermark would be saved on the filesystem
     new_file = urlparse.urljoin(basedir, wm_name_hash)
     new_path = _get_path_from_url(new_file)
+    name = new_path.split('/static/')[-1]
+    db_name = name.split('s3.amazonaws.com/')[-1]
+    old_watermarks = WatermarkFiles.objects.filter(path=db_name)
+    if old_watermarks:
+        return urlparse.urljoin(basedir, wm_name_hash)
+        
+    # # see if the image already exists on the filesystem.  If it does, use it.
+    # if os.access(new_path, os.R_OK):
+    #     # see if the Watermark object was modified since the file was created
+    #     modified = datetime.fromtimestamp(os.path.getmtime(new_path))
 
-    # see if the image already exists on the filesystem.  If it does, use it.
-    if os.access(new_path, os.R_OK):
-        # see if the Watermark object was modified since the file was created
-        modified = datetime.fromtimestamp(os.path.getmtime(new_path))
-
-        # only return the old file if things appear to be the same
-        if modified >= watermark.date_updated:
-            return new_file
+    #     # only return the old file if things appear to be the same
+    #     if modified >= watermark.date_updated:
+    #         return new_file
     
     # create the watermarked image on the filesystem
     wm_image = utils.watermark(target,
@@ -174,11 +214,14 @@ def watermark(url, args=''):
                                greyscale=greyscale,
                                rotation=rotation)
     try:
-        wm_image.save(new_path, quality=QUALITY, format="JPEG")
+        store_image_to_s3(wm_image, name, QUALITY, "JPEG")
+        #wm_image.save(new_path, quality=QUALITY, format="JPEG")
     except IOError:
         r, g, b, a = wm_image.split()
         wm_image = Image.merge("RGB", (r,g,b))
-        wm_image.save(new_path, quality=QUALITY)
+        store_image_to_s3(wm_image, name, QUALITY, "JPEG")
+        #wm_image.save(new_path, quality=QUALITY)
     #send back the URL to the new, watermarked image
+    WatermarkFiles.objects.get_or_create(path=db_name)
     return urlparse.urljoin(basedir, wm_name_hash)
 register.filter(watermark)
