@@ -19,7 +19,7 @@ register = template.Library()
 
 def get_image_from_s3(name):
     name = name.split('/static/')[-1]
-    name = name.split('s3.amazonaws.com/')[-1]
+    name = name.split(settings.AWS_S3_CUSTOM_DOMAIN)[-1]
     try:
         name = name.split('?')[0]
     except KeyError:
@@ -30,7 +30,7 @@ def get_image_from_s3(name):
     return im
 
 def store_image_to_s3(image, name, q, format):
-    name = name.split('s3.amazonaws.com/')[-1]
+    name = name.split(settings.AWS_S3_CUSTOM_DOMAIN)[-1]
     try:
         name = name.split('?')[0]
     except KeyError:
@@ -190,7 +190,7 @@ def watermark(url, args=''):
     new_file = urlparse.urljoin(basedir, wm_name_hash)
     new_path = _get_path_from_url(new_file)
     name = new_path.split('/static/')[-1]
-    db_name = name.split('s3.amazonaws.com/')[-1]
+    db_name = name.split(settings.AWS_S3_CUSTOM_DOMAIN)[-1]
     old_watermarks = WatermarkFiles.objects.filter(path=db_name)
     if old_watermarks:
         return urlparse.urljoin(basedir, wm_name_hash)
