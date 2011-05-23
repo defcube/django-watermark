@@ -36,7 +36,6 @@ def get_image_from_s3(name):
         name = name.split('?')[0]
     except KeyError:
         pass
-    print name
     from storages.backends.s3boto import S3BotoStorage, S3BotoStorageFile
     cfile = S3BotoStorageFile(name=name, mode='r',
                               storage=S3BotoStorage())
