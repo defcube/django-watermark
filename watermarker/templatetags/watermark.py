@@ -1,5 +1,6 @@
 from datetime import datetime
 from hashlib import sha1
+from django.core.cache import cache
 import Image
 import errno
 import logging
@@ -8,8 +9,8 @@ import traceback
 
 from django.conf import settings
 from django import template
-from MP100.watermarker import utils
-from MP100.watermarker.models import Watermark
+from watermarker import utils
+from watermarker.models import Watermark, WatermarkCreatedFile
 
 from django.core.files.base import ContentFile
     
@@ -30,31 +31,31 @@ log = logging.getLogger('watermarker')
 
 def get_image_from_s3(name):
     name = name.split(settings.MEDIA_ROOT)[-1]
+    name = name.split('static')[-1]
     try:
         name = name.split('?')[0]
     except KeyError:
         pass
-    from storages.backends.mosso import ThreadSafeCloudFilesStorage, \
-         CloudFilesStorageFile
-    cfile = CloudFilesStorageFile(name=name,
-                              storage=ThreadSafeCloudFilesStorage())
+    print name
+    from storages.backends.s3boto import S3BotoStorage, S3BotoStorageFile
+    cfile = S3BotoStorageFile(name=name, mode='r',
+                              storage=S3BotoStorage())
     im = Image.open(cfile)
     return im
 
-def store_image_to_s3(image, name, q):
-     name = name.split(settings.MEDIA_URL)[-1]
-     try:
-         name = name.split('?')[0]
-     except KeyError:
-         pass
-     from storages.backends.mosso import CloudFilesStorage,\
-          ThreadSafeCloudFilesStorage
-     memory_file = StringIO()
-     image.save(memory_file, quality=q, format='JPEG')
-     cf = ContentFile(memory_file.getvalue())
-     storage = ThreadSafeCloudFilesStorage()
-     storage.save(name, cf)
-    
+def store_image_to_s3(image, name, q, format):
+    name = name.split(settings.AWS_S3_CUSTOM_DOMAIN)[-1]
+    try:
+        name = name.split('?')[0]
+    except KeyError:
+        pass
+    from storages.backends.s3boto import S3BotoStorage, S3BotoStorageFile
+    memory_file = StringIO()
+    image.save(memory_file, quality=q, format=format)
+    cf = ContentFile(memory_file.getvalue())
+    storage = S3BotoStorage()
+    storage.save(name, cf)
+     
 
 class Watermarker(object):
 
@@ -138,8 +139,17 @@ class Watermarker(object):
 
         # open the target image file along with the watermark image
         target_path = self.get_url_path(url)
-        #target = Image.open(target_path)
-        #mark = Image.open(watermark.image.path)
+        cached_mark = cache.get('watermark_{0}_{1}'.format(
+            hash(watermark.image.name),
+            hash(target_path)), None)
+        if cached_mark:
+            return cached_mark
+        old_marks =  WatermarkCreatedFile.objects.filter(
+            watermark_name=watermark.image.name,
+            target_path=target_path)
+        if old_marks:
+            return old_marks[0].url
+        
         target = get_image_from_s3(target_path)
         mark = get_image_from_s3(watermark.image.name)
         # determine the actual value that the parameters provided will render
@@ -183,25 +193,26 @@ class Watermarker(object):
 
         # see if the image already exists on the filesystem.  If it does, use
         # it.
-        from storages.backends.mosso import CloudFilesStorage
-        storage = CloudFilesStorage()
+        from storages.backends.s3boto import S3BotoStorage
+        storage = S3BotoStorage()
         wm_path = wm_path.split(settings.MEDIA_ROOT)[-1]
         if storage.exists(wm_path):
-        #if os.access(wm_path, os.R_OK):
-            # see if the Watermark object was modified since the file was
-            # created
-            modified = datetime.fromtimestamp(os.path.getmtime(wm_path))
-
-            # only return the old file if things appear to be the same
-            if modified >= watermark.date_updated:
-                log.info('Watermark exists and has not changed.  Bailing out.')
+            cached_mark = cache.set('watermark_{0}_{1}'.format(
+                hash(watermark.image.name),
+                hash(target_path)), wm_url, settings.WATERMARK_CACHE_TIMEOUT)
             return wm_url
 
         # make sure the position is in our params for the watermark
         params['position'] = pos
-
+        
         self.create_watermark(target, mark, wm_path, **params)
-
+        WatermarkCreatedFile.objects.get_or_create(
+            watermark_name=watermark.image.name,
+            target_path=target_path,
+            url=wm_url)
+        cached_mark = cache.set('watermark_{0}_{1}'.format(
+                hash(watermark.image.name),
+                hash(target_path)), wm_url, settings.WATERMARK_CACHE_TIMEOUT)
         # send back the URL to the new, watermarked image
         return wm_url
 
@@ -272,8 +283,8 @@ class Watermarker(object):
 
         im = utils.watermark(target, mark, **kwargs)
         #im.save(path, quality=quality)
-        path = path.split(settings.MEDIA_ROOT)
-        store_image_to_s3(im, path, quality)
+        path = path.split('static')[-1]
+        store_image_to_s3(im, path, quality, 'jpeg')
         return im
 
 def watermark(url, args=''):

@@ -12,3 +12,8 @@ class Watermark(models.Model):
 
     class Meta:
         ordering = ['name']
+
+class WatermarkCreatedFile(models.Model):
+    watermark_name = models.CharField(max_length=512)
+    target_path = models.CharField(max_length=512)
+    url = models.CharField(max_length=512)
