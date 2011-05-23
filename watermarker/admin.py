@@ -1,5 +1,5 @@
 from django.contrib import admin
-from watermarker.models import Watermark
+from MP100.watermarker.models import Watermark
 
 class WatermarkAdmin(admin.ModelAdmin):
     model = Watermark
