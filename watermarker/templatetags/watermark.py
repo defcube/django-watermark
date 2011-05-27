@@ -30,8 +30,6 @@ log = logging.getLogger('watermarker')
 
 
 def get_image_from_s3(name):
-    name = name.split(settings.MEDIA_ROOT)[-1]
-    name = name.split('static')[-1]
     try:
         name = name.split('?')[0]
     except KeyError:
@@ -43,7 +41,6 @@ def get_image_from_s3(name):
     return im
 
 def store_image_to_s3(image, name, q, format):
-    name = name.split(settings.AWS_S3_CUSTOM_DOMAIN)[-1]
     try:
         name = name.split('?')[0]
     except KeyError:
@@ -136,19 +133,19 @@ class Watermarker(object):
         basedir = '%s/watermarked' % os.path.dirname(url)
         base, ext = os.path.splitext(os.path.basename(url))
 
-        # open the target image file along with the watermark image
-        target_path = self.get_url_path(url)
         cached_mark = cache.get('watermark_{0}_{1}'.format(
-            hash(watermark.image.name),
-            hash(target_path)), None)
+            hash(name),
+            hash(url)), None)
         if cached_mark:
             return cached_mark
         old_marks =  WatermarkCreatedFile.objects.filter(
-            watermark_name=watermark.image.name,
-            target_path=target_path)
+            watermark_name=name,
+            target_path=url)
         if old_marks:
             return old_marks[0].url
-        
+
+        # open the target image file along with the watermark image
+        target_path = self.get_url_path(url)
         target = get_image_from_s3(target_path)
         mark = get_image_from_s3(watermark.image.name)
         # determine the actual value that the parameters provided will render
@@ -192,26 +189,25 @@ class Watermarker(object):
 
         # see if the image already exists on the filesystem.  If it does, use
         # it.
-        from storages.backends.s3boto import S3BotoStorage
-        storage = S3BotoStorage()
-        wm_path = wm_path.split(settings.MEDIA_ROOT)[-1]
-        if storage.exists(wm_path):
-            cached_mark = cache.set('watermark_{0}_{1}'.format(
-                hash(watermark.image.name),
-                hash(target_path)), wm_url, settings.WATERMARK_CACHE_TIMEOUT)
-            return wm_url
+        # from storages.backends.s3boto import S3BotoStorage
+        # storage = S3BotoStorage()
+        # if storage.exists(wm_path):
+        #     cached_mark = cache.set('watermark_{0}_{1}'.format(
+        #         hash(name),
+        #         hash(url)), wm_url, settings.WATERMARK_CACHE_TIMEOUT)
+        #     return wm_url
 
         # make sure the position is in our params for the watermark
         params['position'] = pos
         
         self.create_watermark(target, mark, wm_path, **params)
         WatermarkCreatedFile.objects.get_or_create(
-            watermark_name=watermark.image.name,
-            target_path=target_path,
+            watermark_name=name,
+            target_path=url,
             url=wm_url)
         cached_mark = cache.set('watermark_{0}_{1}'.format(
-                hash(watermark.image.name),
-                hash(target_path)), wm_url, settings.WATERMARK_CACHE_TIMEOUT)
+                hash(name),
+                hash(url)), wm_url, settings.WATERMARK_CACHE_TIMEOUT)
         # send back the URL to the new, watermarked image
         return wm_url
 
@@ -219,10 +215,16 @@ class Watermarker(object):
         url_root=settings.MEDIA_URL):
         """Makes a filesystem path from the specified URL"""
 
-        if url.startswith(url_root):
-            url = url[len(url_root):] # strip media root url
-
-        return os.path.normpath(os.path.join(root, url))
+        #if url.startswith(url_root):
+        #    url = url[len(url_root):] # strip media root url
+        try:
+            url =  url.split(settings.AWS_S3_CUSTOM_DOMAIN)[1]
+        except:
+            pass
+        if url.startswith('/'):
+            url = url[1:]
+        return url
+        #return os.path.normpath(os.path.join(root, url))
 
     def watermark_name(self, mark, **kwargs):
         """Comes up with a good filename for the watermarked image"""
@@ -262,18 +264,18 @@ class Watermarker(object):
             new_file = os.path.join(basedir, hash, base + ext)
 
         # make sure the destination directory exists
-        try:
-            root = self.get_url_path(new_file)
-            os.makedirs(os.path.dirname(root))
-        except OSError, exc:
-            if exc.errno == errno.EEXIST:
-                # not to worry, directory exists
-                pass
-            else:
-                log.error('Error creating path: %s' % traceback.format_exc())
-                raise
-        else:
-            log.debug('Created directory: %s' % root)
+        #try:
+        #    root = self.get_url_path(new_file)
+        #    os.makedirs(os.path.dirname(root))
+        #except OSError, exc:
+        #    if exc.errno == errno.EEXIST:
+        #        # not to worry, directory exists
+        #        pass
+        #    else:
+        #        log.error('Error creating path: %s' % traceback.format_exc())
+        #        raise
+        #else:
+        #    log.debug('Created directory: %s' % root)
 
         return new_file
 
