@@ -133,11 +133,11 @@ class Watermarker(object):
         basedir = '%s/watermarked' % os.path.dirname(url)
         base, ext = os.path.splitext(os.path.basename(url))
 
-        cached_mark = cache.get('watermark_{0}_{1}'.format(
-            hash(name),
-            hash(url)), None)
-        if cached_mark:
-            return cached_mark
+        #cached_mark = cache.get('watermark_{0}_{1}'.format(
+        #    hash(name),
+        #    hash(url)), None)
+        #if cached_mark:
+        #    return cached_mark
         old_marks =  WatermarkCreatedFile.objects.filter(
             watermark_name=name,
             target_path=url)
@@ -205,9 +205,9 @@ class Watermarker(object):
             watermark_name=name,
             target_path=url,
             url=wm_url)
-        cached_mark = cache.set('watermark_{0}_{1}'.format(
-                hash(name),
-                hash(url)), wm_url, settings.WATERMARK_CACHE_TIMEOUT)
+        #cached_mark = cache.set('watermark_{0}_{1}'.format(
+        #        hash(name),
+        #        hash(url)), wm_url, settings.WATERMARK_CACHE_TIMEOUT)
         # send back the URL to the new, watermarked image
         return wm_url
 
