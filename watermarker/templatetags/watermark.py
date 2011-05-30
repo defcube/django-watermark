@@ -146,8 +146,11 @@ class Watermarker(object):
 
         # open the target image file along with the watermark image
         target_path = self.get_url_path(url)
-        target = get_image_from_s3(target_path)
-        mark = get_image_from_s3(watermark.image.name)
+        try:
+            target = get_image_from_s3(target_path)
+            mark = get_image_from_s3(watermark.image.name)
+        except AttributeError:
+            return url
         # determine the actual value that the parameters provided will render
         random_position = bool(position is None or str(position).lower() == 'r')
         scale = utils.determine_scale(scale, target, mark)
