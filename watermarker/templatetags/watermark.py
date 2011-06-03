@@ -204,10 +204,13 @@ class Watermarker(object):
         params['position'] = pos
         
         self.create_watermark(target, mark, wm_path, **params)
-        WatermarkCreatedFile.objects.get_or_create(
-            watermark_name=name,
-            target_path=url,
-            url=wm_url)
+        try:
+            WatermarkCreatedFile.objects.get_or_create(
+                watermark_name=name,
+                target_path=url,
+                url=wm_url)
+        except WatermarkCreatedFile.MultipleObjectsReturned:
+            pass
         #cached_mark = cache.set('watermark_{0}_{1}'.format(
         #        hash(name),
         #        hash(url)), wm_url, settings.WATERMARK_CACHE_TIMEOUT)
