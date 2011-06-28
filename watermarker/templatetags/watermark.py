@@ -30,6 +30,9 @@ log = logging.getLogger('watermarker')
 
 
 def get_image_from_s3(name):
+    if settings.DEFAULT_FILE_STORAGE ==\
+            "django.core.files.storage.FileSystemStorage":
+        return Image.open(settings.MEDIA_ROOT+name)
     try:
         name = name.split('?')[0]
     except KeyError:
@@ -41,6 +44,15 @@ def get_image_from_s3(name):
     return im
 
 def store_image_to_s3(image, name, q, format):
+    if settings.DEFAULT_FILE_STORAGE ==\
+            "django.core.files.storage.FileSystemStorage":
+        from django.core.files.storage import FileSystemStorage
+        memory_file = StringIO()
+        image.save(memory_file, quality=q, format=format)
+        cf = ContentFile(memory_file.getvalue())
+        storage = S3BotoStorage()
+        storage.save(settings.MEDIA_ROOT+name, cf)
+        return
     try:
         name = name.split('?')[0]
     except KeyError:
@@ -138,11 +150,11 @@ class Watermarker(object):
         #    hash(url)), None)
         #if cached_mark:
         #    return cached_mark
-        old_marks =  WatermarkCreatedFile.objects.filter(
-            watermark_name=name,
-            target_path=url)
-        if old_marks:
-            return old_marks[0].url
+        from main.main_redis import XPRedisClient
+        old_mark = XPRedisClient().get_watermark_cache(name, url)
+        
+        if old_mark:
+            return old_mark
 
         # open the target image file along with the watermark image
         target_path = self.get_url_path(url)
@@ -186,6 +198,8 @@ class Watermarker(object):
         wm_name = self.watermark_name(mark, **params)
         wm_url = self.watermark_path(basedir, base, ext, wm_name, obscure)
         wm_path = self.get_url_path(wm_url)
+        XPRedisClient().set_watermark_cache(name, url, wm_url)
+
         log.debug('Watermark name: %s; URL: %s; Path: %s' % (
             wm_name, wm_url, wm_path
         ))
