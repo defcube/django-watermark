@@ -219,6 +219,7 @@ class Watermarker(object):
         
         self.create_watermark(target, mark, wm_path, **params)
         try:
+            url = url.split('?')[0]
             WatermarkCreatedFile.objects.get_or_create(
                 watermark_name=name,
                 target_path=url,
