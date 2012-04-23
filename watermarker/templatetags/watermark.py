@@ -30,13 +30,14 @@ log = logging.getLogger('watermarker')
 
 
 def get_image_from_s3(name):
-    if settings.DEFAULT_FILE_STORAGE ==\
-            "django.core.files.storage.FileSystemStorage":
-        return Image.open(settings.MEDIA_ROOT+name)
     try:
         name = name.split('?')[0]
     except KeyError:
         pass
+    if settings.DEFAULT_FILE_STORAGE ==\
+            "django.core.files.storage.FileSystemStorage":
+        name = name.split('static/')[-1]
+        return Image.open(settings.MEDIA_ROOT+name)
     from storages.backends.s3boto import S3BotoStorage, S3BotoStorageFile
     cfile = S3BotoStorageFile(name=name, mode='r',
                               storage=S3BotoStorage())
@@ -50,7 +51,8 @@ def store_image_to_s3(image, name, q, format):
         memory_file = StringIO()
         image.save(memory_file, quality=q, format=format)
         cf = ContentFile(memory_file.getvalue())
-        storage = S3BotoStorage()
+        storage = FileSystemStorage()
+        #storage = S3BotoStorage()
         storage.save(settings.MEDIA_ROOT+name, cf)
         return
     try:
@@ -133,6 +135,10 @@ class Watermarker(object):
 
         # look for the specified watermark by name.  If it's not there, go no
         # further
+        
+        disabled = getattr(settings, 'DISABLE_WATERMARK', False)
+        if disabled:
+            return url
         try:
             watermark = Watermark.objects.get(name=name, is_active=True)
         except Watermark.DoesNotExist:
@@ -141,7 +147,7 @@ class Watermarker(object):
 
         # make sure URL is a string
         url = str(url)
-
+        
         basedir = '%s/watermarked' % os.path.dirname(url)
         base, ext = os.path.splitext(os.path.basename(url))
 
